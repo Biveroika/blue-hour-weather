@@ -1,0 +1,95 @@
+name: macos release 1.0.1
+on:
+  push:
+    branches: [main]
+    paths:
+      - Blue-Hour-macos-1.0.1-Source.zip
+      - .github/workflows/macos.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: macos-release-1.0.1
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Extract separate macOS source archive
+        run: unzip -q Blue-Hour-macos-1.0.1-Source.zip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: blue-hour/package-lock.json
+      - name: Install locked dependencies
+        working-directory: blue-hour
+        run: npm ci
+      - name: Unit and UI tests
+        working-directory: blue-hour
+        run: npm test
+      - name: Build ARM64 app and drag-to-Applications DMG
+        working-directory: blue-hour
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run build:mac
+      - name: Verify ARM64, bundle version and ad-hoc signature
+        working-directory: blue-hour
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(lipo -archs 'dist/mac-arm64/Blue Hour.app/Contents/MacOS/Blue Hour')" = arm64
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' 'dist/mac-arm64/Blue Hour.app/Contents/Info.plist')" = 1.0.1
+          codesign --verify --deep --strict --verbose=2 'dist/mac-arm64/Blue Hour.app'
+      - name: Launch packaged app and verify built-in audio playback
+        working-directory: blue-hour
+        run: '"dist/mac-arm64/Blue Hour.app/Contents/MacOS/Blue Hour" --smoke-test'
+      - name: Mount and verify DMG installation layout
+        working-directory: blue-hour
+        run: |
+          mount_dir="$(mktemp -d)"
+          hdiutil attach dist/Blue-Hour-1.0.1-macos-arm64.dmg -nobrowse -readonly -mountpoint "$mount_dir"
+          trap 'hdiutil detach "$mount_dir"' EXIT
+          test -d "$mount_dir/Blue Hour.app"
+          test -L "$mount_dir/Applications"
+          test "$(readlink "$mount_dir/Applications")" = /Applications
+          test -f "$mount_dir/.DS_Store"
+          codesign --verify --deep --strict "$mount_dir/Blue Hour.app"
+      - name: SHA-256
+        working-directory: blue-hour/dist
+        run: shasum -a 256 Blue-Hour-1.0.1-macos-arm64.dmg > SHA256SUMS-macos-1.0.1.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Blue-Hour-macos-1.0.1
+          path: |
+            blue-hour/dist/Blue-Hour-1.0.1-macos-arm64.dmg
+            blue-hour/dist/SHA256SUMS-macos-1.0.1.txt
+            blue-hour/MACOS-RELEASE.md
+          if-no-files-found: error
+          retention-days: 7
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Blue-Hour-macos-1.0.1
+          path: release
+      - name: Publish verified macOS release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          gh release create v1.0.1 \
+            release/dist/Blue-Hour-1.0.1-macos-arm64.dmg \
+            release/dist/SHA256SUMS-macos-1.0.1.txt \
+            --target "$RELEASE_COMMIT" \
+            --title 'macos release 1.0.1' \
+            --notes-file release/MACOS-RELEASE.md
