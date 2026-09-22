@@ -1,0 +1,2 @@
+a524212145ee3a0289f07bf095de45bf17be4f93f2738ab1d9d6c8a1e7f94c1e  Blue-Hour-1.0.0-x64.exe
+cee76adcc182ee62316a791fc7b56ea197d9beb57947cb29c1bdee5e312d7e52  Blue-Hour-Source.zip
