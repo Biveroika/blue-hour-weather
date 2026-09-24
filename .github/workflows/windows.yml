@@ -1,0 +1,112 @@
+name: winx64_1.1.0
+on:
+  push:
+    branches: [main]
+    paths:
+      - Blue-Hour-winx64_1.1.0-Source.zip
+      - .github/workflows/windows.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: winx64-release-1.1.0
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Extract Windows 1.1.0 source
+        run: Expand-Archive -LiteralPath Blue-Hour-winx64_1.1.0-Source.zip -DestinationPath .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: blue-hour/package-lock.json
+      - name: Install locked dependencies
+        working-directory: blue-hour
+        run: npm ci
+      - name: Unit and UI tests
+        working-directory: blue-hour
+        run: npm test
+      - name: Build Windows x64 portable executable
+        working-directory: blue-hour
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run build:win
+      - name: Verify native x64 architecture and file version
+        working-directory: blue-hour
+        run: |
+          $binary = Get-Item 'dist/win-unpacked/Blue Hour.exe'
+          $bytes = [IO.File]::ReadAllBytes($binary.FullName)
+          $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+          if ([BitConverter]::ToUInt16($bytes, $peOffset + 4) -ne 0x8664) { throw 'Expected AMD64 PE executable' }
+          if ($binary.VersionInfo.ProductVersion -ne '1.1.0') { throw 'Unexpected product version' }
+          if (-not (Test-Path 'dist/Blue-Hour-winx64_1.1.0.exe')) { throw 'Portable executable missing' }
+      - name: Run final portable EXE, verify features and capture UI
+        working-directory: blue-hour
+        run: |
+          $env:BLUE_HOUR_SMOKE_DIR = Join-Path (Get-Location) 'smoke-output'
+          $exe = (Resolve-Path 'dist/Blue-Hour-winx64_1.1.0.exe').Path
+          $process = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -PassThru
+          if (-not $process.WaitForExit(180000)) {
+            taskkill /PID $process.Id /T /F
+            throw 'Portable executable smoke test timed out'
+          }
+          if ($process.ExitCode -ne 0) { throw "Portable executable failed: $($process.ExitCode)" }
+          $checks = Get-Content -Raw 'smoke-output/checks.json' | ConvertFrom-Json
+          if ($checks.platform -ne 'win32' -or $checks.architecture -ne 'x64' -or -not $checks.packaged -or -not $checks.portable) {
+            throw 'Native portable launch was not verified'
+          }
+          Get-Content -Raw 'smoke-output/checks.json'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Blue-Hour-winx64_1.1.0-UI
+          path: blue-hour/smoke-output
+          if-no-files-found: warn
+          retention-days: 7
+      - name: SHA-256
+        working-directory: blue-hour/dist
+        run: |
+          $exe = Get-Item 'Blue-Hour-winx64_1.1.0.exe'
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($exe.Name)" | Set-Content -Encoding ascii 'SHA256SUMS-winx64_1.1.0.txt'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Blue-Hour-winx64_1.1.0
+          path: |
+            blue-hour/dist/Blue-Hour-winx64_1.1.0.exe
+            blue-hour/dist/SHA256SUMS-winx64_1.1.0.txt
+            blue-hour/WINDOWS-RELEASE.md
+          if-no-files-found: error
+          retention-days: 7
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Blue-Hour-winx64_1.1.0
+          path: release
+      - name: Publish verified Windows release as Latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          gh release create winx64_1.1.0 \
+            release/dist/Blue-Hour-winx64_1.1.0.exe \
+            release/dist/SHA256SUMS-winx64_1.1.0.txt \
+            --target "$RELEASE_COMMIT" \
+            --title 'winx64_1.1.0' --latest \
+            --notes-file release/WINDOWS-RELEASE.md
