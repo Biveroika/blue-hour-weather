@@ -47,7 +47,11 @@ jobs:
           $bytes = [IO.File]::ReadAllBytes($binary.FullName)
           $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
           if ([BitConverter]::ToUInt16($bytes, $peOffset + 4) -ne 0x8664) { throw 'Expected AMD64 PE executable' }
-          if ($binary.VersionInfo.ProductVersion -ne '1.1.0') { throw 'Unexpected product version' }
+          $version = $binary.VersionInfo
+          Write-Output "ProductVersion=$($version.ProductVersion); FileVersion=$($version.FileVersion)"
+          if ($version.ProductMajorPart -ne 1 -or $version.ProductMinorPart -ne 1 -or $version.ProductBuildPart -ne 0) {
+            throw "Unexpected product version: $($version.ProductVersion)"
+          }
           if (-not (Test-Path 'dist/Blue-Hour-winx64_1.1.0.exe')) { throw 'Portable executable missing' }
       - name: Run final portable EXE, verify features and capture UI
         working-directory: blue-hour
