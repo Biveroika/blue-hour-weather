@@ -2,6 +2,16 @@
 
 Приложение погоды с интерфейсом, вдохновлённым меню Persona 3 Reload: дневной акцент `#126BFF` и ночной `#148552`, крупные наклонные заголовки, диагональные панели, фоновые кольца и анимированные переходы. Отдельные выпуски **winx64_1.1.0 — Windows 10/11 x64** и **macos release 1.1.0 — macOS 13+ / Apple Silicon (arm64)**. Оформление и иконки оригинальные; три аудиотрека из Persona 3 Reload предоставлены пользователем.
 
+## macOS / macos 0.01 — Revelations Edition
+
+[Скачать DMG для Apple Silicon](https://github.com/Biveroika/blue-hour-weather/releases/download/macos_0.01/Blue-Hour-macos-0.01-arm64.dmg) · [macos 0.01 — Revelations Edition](https://github.com/Biveroika/blue-hour-weather/releases/tag/macos_0.01)
+
+Отдельная шуточная сборка для **Apple Silicon (M1 и новее)**: рабочий стол и окна в духе **System 7**, пиксельный интерфейс **Revelations: Persona для PSX**. Погода Open-Meteo, давление, 7 дней и фазы Луны сохранены. Звуковых эффектов наведения и переключения нет; фоновая музыка выключена по умолчанию и включается отдельно.
+
+![Blue Hour macos 0.01 — проверка готового ARM64-приложения](Blue-Hour-Revelations-macos-0.01.png)
+
+Откройте DMG и перетащите **Blue Hour Revelations.app** в **Applications**. У этой версии отдельные имя и настройки; она устанавливается рядом с обычной Blue Hour. Finder и интерфейс показывают версию **0.01**. macOS 13+ / ARM64. В архиве исходников `Blue-Hour-macos-0.01-Source.zip` лежит отдельный проект `blue-hour-retro/`; workflow `.github/workflows/macos-retro.yml` собирает приложение на ARM-Mac, запускает его, проверяет подпись и монтаж DMG. Выпуск публикуется отдельно как prerelease.
+
 ## macOS / 1.1.0
 
 Скачайте `Blue-Hour-1.1.0-macos-arm64.dmg` из релиза **macos release 1.1.0**, откройте образ и перетащите **Blue Hour.app** на расположенную рядом папку **Applications**. Затем извлеките образ и запускайте приложение из Applications. Intel Mac не поддерживается этой сборкой; Rosetta на Apple Silicon не нужна.
@@ -72,3 +82,4 @@ Workflow `.github/workflows/windows.yml` извлекает `Blue-Hour-winx64_1.
 ## Оформление и лицензии
 
 Blue Hour — неофициальное приложение; оно не связано с ATLUS или SEGA. Persona 3 Reload — источник визуального вдохновения и предоставленного пользователем трека Color Your Night. Шрифт Oswald поставляется локально по SIL Open Font License (`app/fonts/OFL.txt`). Лицензии Electron и Chromium входят в собранное приложение. Исходники проекта предназначены для личного использования; открытая лицензия не назначена. Аудиозапись не переходит под лицензию исходного кода.
+
