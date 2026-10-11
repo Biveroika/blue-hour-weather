@@ -1,0 +1,111 @@
+name: macos 0.01 Revelations Edition
+on:
+  push:
+    branches: [main]
+    paths:
+      - Blue-Hour-macos-0.01-Source.zip
+      - .github/workflows/macos-retro.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: macos-retro-0.01
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Extract separate retro source archive
+        run: unzip -q Blue-Hour-macos-0.01-Source.zip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: blue-hour-retro/package-lock.json
+      - name: Install locked dependencies
+        working-directory: blue-hour-retro
+        run: npm ci
+      - name: Verify weather, retro menus and silent startup
+        working-directory: blue-hour-retro
+        run: npm test
+      - name: Build Apple Silicon app and retro DMG
+        working-directory: blue-hour-retro
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run build:mac
+      - name: Verify ARM64, Finder version and ad-hoc signature
+        working-directory: blue-hour-retro
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(lipo -archs 'dist/mac-arm64/Blue Hour Revelations.app/Contents/MacOS/Blue Hour Revelations')" = arm64
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' 'dist/mac-arm64/Blue Hour Revelations.app/Contents/Info.plist')" = 0.01
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' 'dist/mac-arm64/Blue Hour Revelations.app/Contents/Info.plist')" = app.bluehour.revelations
+          codesign --verify --deep --strict --verbose=2 'dist/mac-arm64/Blue Hour Revelations.app'
+      - name: Run packaged app, verify native controls and capture retro UI
+        working-directory: blue-hour-retro
+        env:
+          BLUE_HOUR_SMOKE_DIR: smoke-output
+        run: |
+          if ! 'dist/mac-arm64/Blue Hour Revelations.app/Contents/MacOS/Blue Hour Revelations' --smoke-test; then
+            cat smoke-output/failure.txt
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Blue-Hour-macos-0.01-UI
+          path: blue-hour-retro/smoke-output
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Mount and verify drag-to-Applications DMG
+        working-directory: blue-hour-retro
+        run: |
+          mount_dir="$(mktemp -d)"
+          hdiutil attach dist/Blue-Hour-macos-0.01-arm64.dmg -nobrowse -readonly -mountpoint "$mount_dir"
+          trap 'hdiutil detach "$mount_dir"' EXIT
+          test -d "$mount_dir/Blue Hour Revelations.app"
+          test -L "$mount_dir/Applications"
+          test "$(readlink "$mount_dir/Applications")" = /Applications
+          test -f "$mount_dir/.DS_Store"
+          test -d "$mount_dir/.background"
+          codesign --verify --deep --strict "$mount_dir/Blue Hour Revelations.app"
+      - name: SHA-256
+        working-directory: blue-hour-retro/dist
+        run: shasum -a 256 Blue-Hour-macos-0.01-arm64.dmg > SHA256SUMS-macos-0.01.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Blue-Hour-macos-0.01
+          path: |
+            blue-hour-retro/dist/Blue-Hour-macos-0.01-arm64.dmg
+            blue-hour-retro/dist/SHA256SUMS-macos-0.01.txt
+            blue-hour-retro/MACOS-RETRO-RELEASE.md
+          if-no-files-found: error
+          retention-days: 7
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Blue-Hour-macos-0.01
+          path: release
+      - name: Publish separate joke edition
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          gh release create macos_0.01 \
+            release/dist/Blue-Hour-macos-0.01-arm64.dmg \
+            release/dist/SHA256SUMS-macos-0.01.txt \
+            --target "$RELEASE_COMMIT" \
+            --title 'macos 0.01 — Revelations Edition' \
+            --prerelease --latest=false \
+            --notes-file release/MACOS-RETRO-RELEASE.md
