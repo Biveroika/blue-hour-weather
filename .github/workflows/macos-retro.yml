@@ -67,11 +67,23 @@ jobs:
           mount_dir="$(mktemp -d)"
           hdiutil attach dist/Blue-Hour-macos-0.01-arm64.dmg -nobrowse -readonly -mountpoint "$mount_dir"
           trap 'hdiutil detach "$mount_dir"' EXIT
+          ls -la "$mount_dir"
           test -d "$mount_dir/Blue Hour Revelations.app"
           test -L "$mount_dir/Applications"
           test "$(readlink "$mount_dir/Applications")" = /Applications
           test -f "$mount_dir/.DS_Store"
-          test -d "$mount_dir/.background"
+          python3 - "$mount_dir" assets/dmg-retro.png <<'PY'
+          import pathlib, sys
+          volume = pathlib.Path(sys.argv[1])
+          expected = pathlib.Path(sys.argv[2]).read_bytes()
+          candidates = [p for p in volume.iterdir() if p.is_file()]
+          for folder in volume.iterdir():
+              if folder.is_dir() and folder.name.startswith('.'):
+                  candidates.extend(p for p in folder.iterdir() if p.is_file())
+          matches = [p.name for p in candidates if p.read_bytes() == expected]
+          assert matches, 'The DMG must contain the exact retro installation background'
+          print('Verified DMG background:', matches)
+          PY
           codesign --verify --deep --strict "$mount_dir/Blue Hour Revelations.app"
       - name: SHA-256
         working-directory: blue-hour-retro/dist
